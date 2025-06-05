@@ -17,33 +17,12 @@ transform = transforms.Compose([
     transforms.ToTensor(),         # this ensures values ∈ [0,1]
 ])
 
-# class CelebADataset(torch.utils.data.Dataset):
-#     def __init__(self, root, transform=None):
-#         self.root = root
-#         self.transform = transform
-#         # List all image files in the root directory
-#         self.imgs = [os.path.join(root, fname) for fname in os.listdir(root)
-#                      if fname.lower().endswith(('.png', '.jpg', '.jpeg'))]
-
-#     def __len__(self):
-#         return len(self.imgs)
-
-#     def __getitem__(self, idx):
-#         img_path = self.imgs[idx]
-#         img = Image.open(img_path).convert('RGB')
-#         if self.transform:
-#             img = self.transform(img)
-#         return img, 0  # dummy label
-
-# dataset = CelebADataset(root=data_root, transform=transform)
-
 dataset = ImageFolder(root=data_root, transform=transform)
 
 dataloader = DataLoader(
     dataset,
     batch_size=64,
     shuffle=True,
-    # num_workers=4,   # adjust if you run into CPU‐worker errors
     pin_memory=True,
 )
 
@@ -60,7 +39,7 @@ optimizer = optim.Adam(model.parameters(), lr=1e-3)
 num_epochs = 20
 log_interval = 100   # how many batches between printouts
 
-resume = True
+resume = False
 checkpoint_path = "epoch20.pth"  # or whichever epoch you want
 
 start_epoch = 1
