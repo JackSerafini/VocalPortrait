@@ -1,123 +1,118 @@
-import os
-from tqdm import tqdm
 import torch
-import torch.optim as optim
+from torch import optim
 from torch.utils.data import DataLoader
-from torchvision import utils
+from torchvision import datasets, transforms
+from torchvision.utils import save_image
 
-from vae import VAE, PerceptualLoss, vae_loss
-from preprocess import preprocess_and_split, FaceDataset
-# from audioe import AudioEncoder
+from plain_vae import plainVAE
+from torchvision.datasets import ImageFolder, DatasetFolder
+import os
+from PIL import Image
 
-RAW_IMAGE_DIR = "archive_celeba/"
-PREPROCESS_DIR = "archive_preproc_imgs/"
-IMAGE_SIZE = (64, 64)
-TRAIN_SPLIT = 0.8
-BATCH_SIZE = 64
-LATENT_DIM = 128
-LR = 1e-4
-EPOCHS = 20
-BETA = 1.0
-GAMMA = 0.1
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+data_root = "archive_celeba"
 
-if not os.path.isdir(PREPROCESS_DIR):
-    print("→ Preprocessing raw images and splitting into train/test …")
-    preprocess_and_split(
-        raw_dir=RAW_IMAGE_DIR,
-        out_dir=PREPROCESS_DIR,
-        image_size=IMAGE_SIZE,
-        train_split=TRAIN_SPLIT,
-    )
-else:
-    print(f"Found existing '{PREPROCESS_DIR}/'. Skipping preprocessing.")
+# Typical transforms for a VAE with Sigmoid output:
+transform = transforms.Compose([
+    transforms.Resize((128, 128)),
+    transforms.ToTensor(),         # this ensures values ∈ [0,1]
+])
 
-# 5.2 Create Datasets & DataLoaders
-train_folder = os.path.join(PREPROCESS_DIR, "train")
-test_folder = os.path.join(PREPROCESS_DIR, "test")
+# class CelebADataset(torch.utils.data.Dataset):
+#     def __init__(self, root, transform=None):
+#         self.root = root
+#         self.transform = transform
+#         # List all image files in the root directory
+#         self.imgs = [os.path.join(root, fname) for fname in os.listdir(root)
+#                      if fname.lower().endswith(('.png', '.jpg', '.jpeg'))]
 
-train_ds = FaceDataset(train_folder)
-test_ds = FaceDataset(test_folder)
+#     def __len__(self):
+#         return len(self.imgs)
 
-train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
-test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True)
+#     def __getitem__(self, idx):
+#         img_path = self.imgs[idx]
+#         img = Image.open(img_path).convert('RGB')
+#         if self.transform:
+#             img = self.transform(img)
+#         return img, 0  # dummy label
 
-# 5.3 Instantiate Model, Loss, Optimizer
-vae = VAE(latent_dim=LATENT_DIM).to(DEVICE)
-perceptual_fn = PerceptualLoss(device=DEVICE).to(DEVICE)
-optimizer = optim.Adam(vae.parameters(), lr=LR)
+# dataset = CelebADataset(root=data_root, transform=transform)
 
-# 5.4 Training Loop
-vae.train()
-for epoch in range(1, EPOCHS + 1):
-    total_loss = 0.0
-    total_recon = 0.0
-    total_perc = 0.0
-    total_kl = 0.0
+dataset = ImageFolder(root=data_root, transform=transform)
 
-    for imgs in tqdm(train_loader, desc=f"Epoch {epoch}/{EPOCHS} [Train]"):
-        imgs = imgs.to(DEVICE)  # (B×3×64×64)
+dataloader = DataLoader(
+    dataset,
+    batch_size=64,
+    shuffle=True,
+    # num_workers=4,   # adjust if you run into CPU‐worker errors
+    pin_memory=True,
+)
 
+# ----------------------------
+# 3) Instantiate model, optimizer, device
+# ----------------------------
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+model = plainVAE(latent_dim=128).to(device)
+optimizer = optim.Adam(model.parameters(), lr=1e-3)
+
+# ----------------------------
+# 4) Training loop
+# ----------------------------
+num_epochs = 20
+log_interval = 100   # how many batches between printouts
+
+resume = True
+checkpoint_path = "epoch20.pth"  # or whichever epoch you want
+
+start_epoch = 1
+if resume and os.path.exists(checkpoint_path):
+    model.load_state_dict(torch.load(checkpoint_path))
+    print(f"Resumed model from {checkpoint_path}")
+    # If you also saved the optimizer state, load it too:
+    # optimizer.load_state_dict(torch.load("optimizer_epoch5.pth"))
+    start_epoch = int(checkpoint_path.split("epoch")[1].split(".")[0]) + 1
+
+for epoch in range(start_epoch, num_epochs + 1):
+    model.train()
+    running_recon_loss = 0.0
+    running_kl_loss = 0.0
+    running_total_loss = 0.0
+
+    for batch_idx, (imgs, _) in enumerate(dataloader, start=1):
+        imgs = imgs.to(device)   # shape (B, 3, 128, 128)
         optimizer.zero_grad()
-        recon_imgs, mu, logvar = vae(imgs)
 
-        loss, rl, pl, kl = vae_loss(recon_imgs, imgs, mu, logvar, perceptual_fn, beta=BETA)
+        recon_imgs, mu, logvar = model(imgs)
+        loss, recon_loss, kl_loss = model.loss(imgs, recon_imgs, mu, logvar, beta=1.0)
         loss.backward()
         optimizer.step()
 
-        total_loss += loss.item() * imgs.size(0)
-        total_recon += rl.item() * imgs.size(0)
-        total_perc += pl.item() * imgs.size(0)
-        total_kl += kl.item() * imgs.size(0)
+        running_total_loss += loss.item()
+        running_recon_loss += recon_loss.item()
+        running_kl_loss += kl_loss.item()
 
-    n_train = len(train_loader.dataset)
-    print(
-        f"  → Train ‖ "
-        f"Loss: {total_loss/n_train:.4f} | "
-        f"Recon: {total_recon/n_train:.4f} | "
-        f"Perc: {total_perc/n_train:.4f} | "
-        f"KL: {total_kl/n_train:.4f}"
-    )
+        if batch_idx % log_interval == 0:
+            avg_total = running_total_loss / log_interval
+            avg_recon = running_recon_loss / log_interval
+            avg_kl    = running_kl_loss / log_interval
+            print(f"Epoch [{epoch}/{num_epochs}]  "
+                  f"Batch [{batch_idx}/{len(dataloader)}]  "
+                  f"Total Loss: {avg_total:.3f}  "
+                  f"Reconstruction: {avg_recon:.3f}  "
+                  f"KL: {avg_kl:.3f}")
+            running_total_loss = 0.0
+            running_recon_loss = 0.0
+            running_kl_loss    = 0.0
 
-    # 5.5 Evaluate on Test Set (every epoch)
-    vae.eval()
+    # At the end of each epoch, you can save a checkpoint:
+    checkpoint_path = f"vae_epoch{epoch}.pth"
+    torch.save(model.state_dict(), checkpoint_path)
+
+    # (Optional) Also: generate a few samples from N(0,I) and save to disk
+    model.eval()
     with torch.no_grad():
-        t_loss = 0.0
-        t_recon = 0.0
-        t_perc = 0.0
-        t_kl = 0.0
-        for imgs in tqdm(test_loader, desc=f"Epoch {epoch}/{EPOCHS} [Test]"):
-            imgs = imgs.to(DEVICE)
-            recon_imgs, mu, logvar = vae(imgs)
-            loss, rl, pl, kl = vae_loss(recon_imgs, imgs, mu, logvar, perceptual_fn, beta=BETA)
+        sample_z = torch.randn(64, model.latent_dim).to(device)
+        sample_imgs = model.decode(sample_z)   # (64, 3, 128, 128)
+        # Save a grid of 64 samples as a single image
+        save_image(sample_imgs.cpu(), f"sample_epoch{epoch}.png", nrow=8, normalize=True)
 
-            t_loss += loss.item() * imgs.size(0)
-            t_recon += rl.item() * imgs.size(0)
-            t_perc += pl.item() * imgs.size(0)
-            t_kl += kl.item() * imgs.size(0)
-
-        n_test = len(test_loader.dataset)
-        print(
-            f"  → Test  ‖ "
-            f"Loss: {t_loss/n_test:.4f} | "
-            f"Recon: {t_recon/n_test:.4f} | "
-            f"Perc: {t_perc/n_test:.4f} | "
-            f"KL: {t_kl/n_test:.4f}"
-        )
-
-        # Save one batch of reconstructions vs originals (only once, in epoch 1)
-        if epoch == 1:
-            sample_imgs = next(iter(test_loader)).to(DEVICE)  # first batch
-            recon_imgs, _, _ = vae(sample_imgs)
-            # Stack originals on top of reconstructions
-            comparison = torch.cat([sample_imgs[:16], recon_imgs[:16]], dim=0)  # (32×3×64×64)
-            utils.save_image(
-                comparison.cpu(),
-                f"recon_comparison_epoch{epoch}.png",
-                nrow=16,
-            )
-            print(f"Saved a recon vs. real comparison → recon_comparison_epoch{epoch}.png")
-
-    vae.train()
-
-print("Training complete. You can inspect the saved `recon_comparison_epoch1.png` to see how well the VAE is doing.")
+print("Training finished.")

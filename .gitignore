@@ -198,3 +198,5 @@ myenv/
 
 # Data
 archive*
+sample*
+vae_epoch*
