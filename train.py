@@ -9,11 +9,11 @@ from torchvision.datasets import ImageFolder, DatasetFolder
 import os
 from PIL import Image
 
-data_root = "archive_celeba"
+data_root = "archive"
 
 # Typical transforms for a VAE with Sigmoid output:
 transform = transforms.Compose([
-    transforms.Resize((128, 128)),
+    transforms.Resize((64, 64)),
     transforms.ToTensor(),         # this ensures values ∈ [0,1]
 ])
 
@@ -29,18 +29,19 @@ dataloader = DataLoader(
 # ----------------------------
 # 3) Instantiate model, optimizer, device
 # ----------------------------
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-model = plainVAE(latent_dim=128).to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
+# device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+device = torch.device("mps")
+model = plainVAE(latent_dim=512).to(device)
+optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
 # ----------------------------
 # 4) Training loop
 # ----------------------------
-num_epochs = 20
+num_epochs = 5
 log_interval = 100   # how many batches between printouts
 
 resume = False
-checkpoint_path = "epoch20.pth"  # or whichever epoch you want
+checkpoint_path = "vae_epoch2.pth" # or whichever epoch you want
 
 start_epoch = 1
 if resume and os.path.exists(checkpoint_path):
