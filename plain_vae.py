@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
-from torchvision import models
 
 class plainVAE(nn.Module):
     def __init__(self, latent_dim: int = 128):
@@ -11,28 +10,28 @@ class plainVAE(nn.Module):
         # Encoder: input 3x128x128 -> latent mean and log variance
         self.encoder = nn.Sequential(
             # Layer 1: 3x128x128 -> 32x64x64 # Should I use bigger images?
-            nn.Conv2d(3, 32, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(3, 64, kernel_size=4, stride=2, padding=1),
             nn.ReLU(inplace=True),
 
             # Layer 2: 32x64x64 -> 64x32x32 # Should I use bigger images?
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-
-            # Layer 3: 64x32x32 -> 128x16x16
             nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
 
-            # Layer 4: 128x16x16 -> 256x8x8
+            # Layer 3: 64x32x32 -> 128x16x16
             nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
 
-            # Layer 5: 256x8x8 -> 512x4x4
+            # Layer 4: 128x16x16 -> 256x8x8
             nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(512),
             nn.ReLU(inplace=True),
+
+            # # Layer 5: 256x8x8 -> 512x4x4
+            # nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),
+            # nn.BatchNorm2d(512),
+            # nn.ReLU(inplace=True),
         )
 
         self.fc_mu = nn.Linear(512 * 4 * 4, latent_dim)
@@ -55,13 +54,13 @@ class plainVAE(nn.Module):
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
 
-            # Layer 4: 64*32*32 -> 32*64*64
-            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
+            # # Layer 4: 64*32*32 -> 32*64*64
+            # nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
+            # nn.BatchNorm2d(32),
+            # nn.ReLU(inplace=True),
 
             # Layer 4: 32*64*64 -> 3*128*128
-            nn.ConvTranspose2d(32, 3, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose2d(64, 3, kernel_size=4, stride=2, padding=1),
             nn.Sigmoid(),
         )
 
