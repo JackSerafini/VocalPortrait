@@ -4,7 +4,7 @@ from torchvision import transforms, datasets
 from torch.utils.data import DataLoader
 import os
 
-from plain_vae import plainVAE
+from models.plain_vae import plainVAE
 
 import random
 from torchvision.transforms import functional as F

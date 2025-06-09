@@ -68,6 +68,7 @@ class plainVAE(nn.Module):
         h = self.encoder(x)
         h = h.view(h.size(0), -1)
         mu = self.fc_mu(h)
+        mu = F.normalize(mu, p=2, dim=1)
         logvar = self.fc_logvar(h)
         return mu, logvar
     
