@@ -21,12 +21,12 @@ class RandomBrightnessTransform:
 # ----------------------------
 # 1. Settings
 # ----------------------------
-checkpoint_path = "epoch20.pth"
+checkpoint_path = "vae_epoch40.pth"
 output_dir = "vae_test_outputs"
 os.makedirs(output_dir, exist_ok=True)
 
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = torch.device("mps")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("mps")
 latent_dim = 128
 num_samples = 10
 
@@ -55,13 +55,13 @@ with torch.no_grad():
 # Prepare dataset
 transform = transforms.Compose([
     # RandomBrightnessTransform(),  # Random brightness
-    transforms.Resize((128, 128)),  # ensure images are 64x64
+    transforms.Resize((64, 64)),  # ensure images are 64x64
     transforms.ToTensor(),  # values ∈ [0, 1],
 ])
 
 data_root = "cartella"  # same path as during training
 dataset = datasets.ImageFolder(root=data_root, transform=transform)
-dataloader = DataLoader(dataset, batch_size=1)
+dataloader = DataLoader(dataset, batch_size=10)
 
 # Get a single batch of real images
 real_imgs, _ = next(iter(dataloader))
